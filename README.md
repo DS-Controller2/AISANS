@@ -36,7 +36,7 @@ The project is organized into the following main directories:
 
 1.  **Clone the Repository:**
     ```bash
-    git clone <repository_url> 
+    git clone <repository_url>
     cd aisans
     ```
     *(Replace `https://github.com/DS-Controller2/AISANS.git` with the actual URL of the repository)*
@@ -58,7 +58,7 @@ The project is organized into the following main directories:
 
 ## How to Run the Crawler
 
-The `scripts/run_crawler.py` script is the entry point for running the web crawler. 
+The `scripts/run_crawler.py` script is the entry point for running the web crawler.
 
 Make sure you have:
 1. Installed all dependencies from `requirements.txt`.
