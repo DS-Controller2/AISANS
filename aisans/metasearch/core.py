@@ -27,7 +27,7 @@ def enhance_query_llm(query: str) -> str:
             f"Rephrase or improve the following search query for better results, "
             f"focusing on clarity and effectiveness. "
             f"Return only the improved query, without any preamble or explanation. "
-            f"Original query: "{query}""
+            f"Original query: {query}" # Simplified: query directly embedded
         )
 
         print(f"Attempting LLM query enhancement for: '{query}' using model {model_to_use}...")
