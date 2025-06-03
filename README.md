@@ -31,6 +31,19 @@ The AISANS project now includes a meta-search module designed to aggregate resul
 -   `aisans/metasearch/core.py`: Contains the main orchestration logic (`search_all_engines`) and the LLM enhancement placeholder (`enhance_query_llm`).
 -   `aisans/metasearch/engines.py`: Contains functions for interacting with specific search engines (`search_duckduckgo`, placeholder `search_google`).
 
+## Indexer Module
+
+The Indexer module is responsible for storing and indexing the data fetched by the crawler and meta-search components. This allows for efficient full-text searching of the collected web page information.
+
+**Key Features:**
+-   **Backend:** Uses SQLite FTS5 (Full-Text Search engine, version 5) for robust and efficient indexing and querying. Data is stored locally in an SQLite database file (default: `aisans_index.db`).
+-   **Schema:** Indexes documents with fields such as `url`, `title`, `body` (full text), `snippet`, `source_engine`, and `crawled_timestamp`.
+-   **Functionality:** Provides methods to add individual or batch documents to the index and to search the indexed content.
+-   **Tokenizer:** Utilizes the `unicode61 remove_diacritics 2` tokenizer for effective multilingual text processing and case/diacritic insensitive searching.
+
+**Structure:**
+-   `aisans/indexer/indexer.py`: Contains the `Indexer` class which encapsulates all indexing and searching logic.
+
 ## Project Structure
 
 The project is organized into the following main directories:
@@ -38,7 +51,7 @@ The project is organized into the following main directories:
 *   `aisans/`: Contains the core source code for the search engine.
     *   `crawler/`:  Handles fetching and parsing web content.
     *   `metasearch/`: Aggregates results from multiple search engines and includes LLM query enhancement capabilities.
-    *   `indexer/`: Responsible for indexing the crawled content (placeholder).
+    *   `indexer/`: Manages the storage and full-text indexing of crawled/fetched data using SQLite FTS5.
     *   `llm/`:  Integrates with large language models (placeholder).
     *   `search/`:  Provides search functionalities (placeholder).
     *   `ui/`: Manages the user interface (placeholder).
@@ -102,6 +115,15 @@ To test the meta-search functionality, which queries DuckDuckGo (and a placehold
 python scripts/run_metasearch.py
 ```
 The script will prompt you to enter a search query.
+
+### Searching the Local Index
+
+After data has been added to the index (e.g., by future modifications to the crawler or meta-search scripts to save their findings), you can search the local index using:
+
+```bash
+python scripts/search_index.py
+```
+This script will prompt you to enter search queries and will display matching documents found in the `aisans_index.db` file (or the database specified by the `AISANS_DB_PATH` environment variable).
 
 ## Future Enhancements
 
