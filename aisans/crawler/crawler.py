@@ -27,39 +27,49 @@ def fetch_url_content(url: str) -> str | None:
         robots_url = f"{scheme}://{netloc}/robots.txt"
         cache_key = netloc # Use netloc (domain) as the cache key
 
-        if cache_key not in robot_parsers_cache:
-            print(f"No robots.txt parser in cache for {netloc}. Fetching {robots_url}")
-            parser = urllib.robotparser.RobotFileParser()
-            parser.set_url(robots_url)
-            try:
-                # Use a specific timeout for robots.txt, and same headers
-                robots_headers = {"User-Agent": CRAWLER_USER_AGENT}
-                # Allow more status codes for robots.txt, as 404 means allow all.
-                # However, requests.get will raise for 4xx/5xx by default if not handled.
-                # For simplicity, we'll rely on status_code check.
-                response_robots = requests.get(robots_url, headers=robots_headers, timeout=5)
-                if response_robots.status_code == 200:
-                    parser.parse(response_robots.text.splitlines())
-                    print(f"Successfully fetched and parsed robots.txt for {netloc}")
-                elif response_robots.status_code >= 400 and response_robots.status_code < 500:
-                     print(f"Client error ({response_robots.status_code}) fetching robots.txt for {netloc}. Assuming allow all.")
-                     # Parser remains empty, effectively allowing all.
-                else: # Other errors or server issues
-                    print(f"Failed to fetch robots.txt for {netloc}. Status: {response_robots.status_code}. Assuming allow all.")
-            except requests.exceptions.Timeout:
-                print(f"Timeout fetching robots.txt for {netloc}. Assuming allow all.")
-            except requests.exceptions.RequestException as e:
-                print(f"Error fetching robots.txt for {netloc}: {e}. Assuming allow all.")
-            robot_parsers_cache[cache_key] = parser
-        else:
+        parser = None
+        attempt_page_fetch = True # Assume allow by default, disallow if robots.txt says so
+
+        if cache_key in robot_parsers_cache:
             print(f"Found robots.txt parser in cache for {netloc}.")
             parser = robot_parsers_cache[cache_key]
-
-        if not parser.can_fetch(CRAWLER_USER_AGENT, url):
-            print(f"Fetching DISALLOWED for {url} by robots.txt on {netloc}")
-            return None
         else:
-            print(f"Fetching ALLOWED for {url} by robots.txt on {netloc}")
+            print(f"No robots.txt parser in cache for {netloc}. Fetching {robots_url}")
+            current_parser = urllib.robotparser.RobotFileParser()
+            current_parser.set_url(robots_url)
+            try:
+                robots_headers = {"User-Agent": CRAWLER_USER_AGENT}
+                response_robots = requests.get(robots_url, headers=robots_headers, timeout=5)
+                if response_robots.status_code == 200:
+                    current_parser.parse(response_robots.text.splitlines())
+                    robot_parsers_cache[cache_key] = current_parser # Cache successfully parsed robots.txt
+                    parser = current_parser
+                    print(f"Successfully fetched, parsed, and cached robots.txt for {netloc}")
+                elif response_robots.status_code >= 400 and response_robots.status_code < 500:
+                    print(f"Client error ({response_robots.status_code}) for robots.txt at {netloc}. Assuming allow for this request.")
+                    # Do not cache this error state; attempt_page_fetch remains True
+                else:
+                    print(f"Failed to fetch robots.txt for {netloc} (Status: {response_robots.status_code}). Assuming allow for this request.")
+            except requests.exceptions.Timeout:
+                print(f"Timeout fetching robots.txt for {netloc}. Assuming allow for this request.")
+            except requests.exceptions.RequestException as e:
+                print(f"Error fetching robots.txt for {netloc}: {e}. Assuming allow for this request.")
+            # If fetching/parsing robots.txt failed, parser is None or an empty current_parser,
+            # and we default to attempt_page_fetch = True for this single request.
+            # Only successfully parsed robots.txt are cached.
+
+        if parser: # If we have a parser (either from cache or newly parsed)
+            if not parser.can_fetch(CRAWLER_USER_AGENT, url):
+                print(f"Fetching DISALLOWED for {url} by robots.txt on {netloc}")
+                attempt_page_fetch = False
+            else:
+                print(f"Fetching ALLOWED for {url} by robots.txt on {netloc} (using parsed rules).")
+        else: # No parser available (e.g. initial fetch failed), rely on default attempt_page_fetch = True
+             print(f"Proceeding to fetch {url} (robots.txt not available or failed to parse, assuming allow).")
+
+
+        if not attempt_page_fetch:
+            return None
 
         # Proceed to fetch the actual URL content
         headers = {

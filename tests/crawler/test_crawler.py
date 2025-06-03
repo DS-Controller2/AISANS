@@ -91,17 +91,32 @@ class TestFetchUrlContent(unittest.TestCase):
     # New tests for robots.txt specific scenarios
     @patch('aisans.crawler.crawler.requests.get')
     def test_robots_disallows_fetch(self, mock_get):
-        robots_content = f"User-agent: {CRAWLER_USER_AGENT}\nDisallow: /private/"
+        robots_url = "http://example.com/robots.txt"
         page_url = "http://example.com/private/page.html"
+        # Using * user-agent for broader disallow, to check specific agent matching issue
+        robots_content = "User-agent: *\nDisallow: /private/\n"
 
-        mock_get.side_effect = mock_requests_get_side_effect_handler(robots_content, "Page content shouldn't be fetched")
+        mock_robots_response = MagicMock()
+        mock_robots_response.status_code = 200
+        mock_robots_response.text = robots_content
+
+        # Configure mock_get: if called for robots.txt, return mock_robots_response.
+        # If called for anything else (i.e., the page URL, which shouldn't happen), make it obvious by erroring or returning something unexpected.
+        def disallow_side_effect(url, headers, timeout):
+            if url == robots_url:
+                return mock_robots_response
+            # This part should ideally not be reached if the logic is correct
+            raise AssertionError(f"Page URL {url} was fetched when robots.txt should have disallowed it.")
+
+        mock_get.side_effect = disallow_side_effect
 
         with patch('builtins.print'):
             content = fetch_url_content(page_url)
 
         self.assertIsNone(content)
-        self.assertEqual(mock_get.call_count, 1) # Only robots.txt should be fetched
-        self.assertEqual(mock_get.call_args_list[0][0][0], "http://example.com/robots.txt")
+        # Check that requests.get was called for robots.txt and ONLY for robots.txt
+        mock_get.assert_called_once_with(robots_url, headers={"User-Agent": CRAWLER_USER_AGENT}, timeout=5)
+
 
     @patch('aisans.crawler.crawler.requests.get')
     def test_robots_allows_fetch(self, mock_get): # Similar to test_successful_fetch but more explicit
