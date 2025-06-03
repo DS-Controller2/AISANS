@@ -1,18 +1,23 @@
 import sys
 import os
 
+import datetime
+
 # Add project root to sys.path to allow imports from aisans package
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aisans.crawler.crawler import fetch_url_content
 from aisans.crawler.parser import parse_html_content
+from aisans.indexer.indexer import Indexer
 
 SEED_FILE_PATH = "config/seeds.txt"
 
 def main():
     """
-    Main function to read seed URLs, fetch, parse, and print content.
+    Main function to read seed URLs, fetch, parse, index, and print content.
     """
+    indexer = Indexer() # Initialize Indexer
+
     try:
         with open(SEED_FILE_PATH, 'r', encoding='utf-8') as f:
             seed_urls = [line.strip() for line in f if line.strip()]
@@ -33,7 +38,26 @@ def main():
 
         if html_content:
             # Use the current URL as base_url for resolving relative links
-            text_content, extracted_links = parse_html_content(html_content, base_url=url)
+            title, text_content, extracted_links = parse_html_content(html_content, base_url=url)
+
+            # Prepare document for indexing
+            snippet = text_content[:200] + '...' if len(text_content) > 200 else text_content
+            doc_data = {
+                'url': url,
+                'title': title,
+                'body': text_content,
+                'snippet': snippet,
+                'source_engine': 'crawler',
+                'crawled_timestamp': datetime.datetime.utcnow().isoformat() + 'Z'
+            }
+
+            if indexer.add_document(doc_data):
+                print(f"Document {url} added to index.")
+            else:
+                print(f"Failed to add document {url} to index.")
+
+            print(f"--- Extracted Title for {url} ---")
+            print(title)
 
             print(f"--- Extracted Text for {url} ---")
             if len(text_content) > 500:
@@ -55,6 +79,9 @@ def main():
             print(f"Skipping {url} due to fetch error or no content.")
             print("-" * 50)
             print() # Blank line for separation
+    finally:
+        indexer.close()
+        print("Indexer closed.")
 
 if __name__ == "__main__":
     main()

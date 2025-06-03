@@ -2,8 +2,9 @@ import sqlite3
 import os
 
 class Indexer:
-    def __init__(self, db_path):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        db_path_to_use = db_path if db_path is not None else os.getenv('AISANS_DB_PATH', 'aisans_index.db')
+        self.db_path = db_path_to_use
         # Ensure the directory for the db_path exists
         # Use os.path.abspath to handle relative paths correctly before dirname
         abs_db_path = os.path.abspath(self.db_path)
@@ -55,6 +56,8 @@ class Indexer:
             # Add an index on URL for faster lookups if needed, though FTS5 rowid might be sufficient for primary key ops
             # cursor.execute("CREATE INDEX IF NOT EXISTS idx_url ON pages(url);")
             cursor.execute(create_table_sql)
+            # Create an index on the 'url' column for faster lookups and deletions.
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url);")
             self.conn.commit()
             # print("FTS5 'pages' table created or already exists.")
         except sqlite3.Error as e:
@@ -227,7 +230,7 @@ class Indexer:
 
 if __name__ == '__main__':
     # Basic test usage
-    DB_FILE = 'test_indexer.db'
+    DB_FILE = 'test_indexer.db'  # Define DB_FILE for test purposes
     # Ensure the test db directory exists if it's nested, e.g., 'data/test_indexer.db'
     db_dir = os.path.dirname(DB_FILE)
     if db_dir and not os.path.exists(db_dir):

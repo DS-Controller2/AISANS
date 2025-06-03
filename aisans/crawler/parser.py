@@ -1,9 +1,9 @@
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-def parse_html_content(html_content: str, base_url: str | None = None) -> tuple[str, list[str]]:
+def parse_html_content(html_content: str, base_url: str | None = None) -> tuple[str, str, list[str]]:
     """
-    Parses HTML content to extract text and hyperlinks.
+    Parses HTML content to extract title, text, and hyperlinks.
 
     Args:
         html_content: The HTML content as a string.
@@ -11,10 +11,18 @@ def parse_html_content(html_content: str, base_url: str | None = None) -> tuple[
 
     Returns:
         A tuple containing:
+            - The extracted page title (as a string, empty if not found).
             - The extracted text (as a single string).
             - A list of unique absolute URLs (as strings).
     """
     soup = BeautifulSoup(html_content, 'html.parser')
+
+    # Extract title
+    title_tag = soup.title
+    if title_tag and title_tag.string:
+        title = title_tag.string.strip()
+    else:
+        title = ""
 
     # Extract text content
     text_content = soup.get_text(separator=' ', strip=True)
@@ -33,12 +41,12 @@ def parse_html_content(html_content: str, base_url: str | None = None) -> tuple[
             absolute_link = urljoin(base_url, href)
             extracted_links.add(absolute_link)
 
-    return text_content, list(extracted_links)
+    return title, text_content, list(extracted_links)
 
 if __name__ == '__main__':
     sample_html_with_base = """
     <html>
-        <head><title>Test Page</title></head>
+        <head><title> Test Page </title></head>
         <body>
             <p>This is some sample text.
                 It has a <a href="https://www.example.com/absolute">link</a>.
@@ -52,8 +60,9 @@ if __name__ == '__main__':
     </html>
     """
     base = "https://www.example.com"
-    text, links = parse_html_content(sample_html_with_base, base_url=base)
+    title, text, links = parse_html_content(sample_html_with_base, base_url=base)
     print(f"--- Parsing with base_url: {base} ---")
+    print(f"Extracted Title: {title}")
     print("Extracted Text:")
     print(text)
     print("\nExtracted Links:")
@@ -64,14 +73,16 @@ if __name__ == '__main__':
 
     sample_html_no_base = """
     <html>
+        <head><title>No Base Page</title></head>
         <body>
             <p>Text with <a href="https://www.absolute.com/page1">absolute link</a>.</p>
             <p>Text with <a href="/relative/page2">relative link (will be ignored)</a>.</p>
         </body>
     </html>
     """
-    text_no_base, links_no_base = parse_html_content(sample_html_no_base)
+    title_no_base, text_no_base, links_no_base = parse_html_content(sample_html_no_base)
     print("--- Parsing without base_url ---")
+    print(f"Extracted Title: {title_no_base}")
     print("Extracted Text:")
     print(text_no_base)
     print("\nExtracted Links:")
@@ -80,27 +91,32 @@ if __name__ == '__main__':
 
     # Test with empty html
     empty_html = ""
-    text_empty, links_empty = parse_html_content(empty_html, base_url="https://example.com")
+    title_empty, text_empty, links_empty = parse_html_content(empty_html, base_url="https://example.com")
     print("\n--- Parsing empty HTML ---")
+    print(f"Extracted Title: {title_empty}")
     print(f"Text: '{text_empty}'")
     print(f"Links: {links_empty}")
 
     # Test with html having only text
     html_only_text = "<p>Just some text, no links.</p>"
-    text_only, links_only = parse_html_content(html_only_text)
+    title_only_text, text_only, links_only = parse_html_content(html_only_text)
     print("\n--- Parsing HTML with only text ---")
+    print(f"Extracted Title: {title_only_text}")
     print(f"Text: '{text_only}'")
     print(f"Links: {links_only}")
 
     # Test with html having only links
     html_only_links = '<a href="https://link1.com">1</a> <a href="/link2">2</a>'
-    text_l, links_l_no_base = parse_html_content(html_only_links)
+    title_l_no_base, text_l, links_l_no_base = parse_html_content(html_only_links)
     print("\n--- Parsing HTML with only links (no base_url) ---")
+    print(f"Extracted Title: {title_l_no_base}")
     print(f"Text: '{text_l}'") # Should be "1 2" or similar
     print(f"Links: {links_l_no_base}")
 
-
-    text_l_base, links_l_base = parse_html_content(html_only_links, base_url="https_//example.com")
+    # Test with html having a title and only links
+    html_title_only_links = '<head><title>Links Page</title></head><body><a href="https://link1.com">1</a> <a href="/link2">2</a></body>'
+    title_l_base, text_l_base, links_l_base = parse_html_content(html_title_only_links, base_url="https_//example.com")
     print("\n--- Parsing HTML with only links (with base_url) ---")
+    print(f"Extracted Title: {title_l_base}")
     print(f"Text: '{text_l_base}'") # Should be "1 2" or similar
     print(f"Links: {links_l_base}")
