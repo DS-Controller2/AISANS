@@ -34,17 +34,17 @@ class LLMClient:
             # }
         )
 
-        default_openrouter_model = "gryphe/mythomist-7b:free" # A known free/low-cost model
+        default_openrouter_model = "mistralai/mistral-7b-instruct:free" # Updated to a known working free model
         self.default_model_name = os.getenv('OPENROUTER_DEFAULT_MODEL', default_openrouter_model)
 
-    def generate_chat_completion(self, model: str | None = None, messages: list[dict], **kwargs) -> str | None:
+    def generate_chat_completion(self, messages: list[dict], model: str | None = None, **kwargs) -> str | None:
         """
         Generates a chat completion using the specified model and messages.
 
         Args:
+            messages: A list of message objects (e.g., [{"role": "user", "content": "Hello"}]).
             model: The model to use for the completion. If None, uses the client's
                    default model (from OPENROUTER_DEFAULT_MODEL env var or hardcoded fallback).
-            messages: A list of message objects (e.g., [{"role": "user", "content": "Hello"}]).
             **kwargs: Additional keyword arguments to pass to the OpenAI client's
                       chat.completions.create method (e.g., temperature, max_tokens).
 
@@ -129,7 +129,8 @@ class LLMClient:
         # Users can pass 'extra_headers' via kwargs if needed.
 
         model_to_use = model_name if model_name is not None else self.default_model_name
-        return self.generate_chat_completion(model=model_to_use, messages=messages, **kwargs)
+        # When calling generate_chat_completion, messages must come before model if model has a default.
+        return self.generate_chat_completion(messages=messages, model=model_to_use, **kwargs)
 
 if __name__ == '__main__':
     # This is a basic example and requires OPENROUTER_API_KEY to be set in the environment

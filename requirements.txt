@@ -2,3 +2,4 @@ requests
 beautifulsoup4
 google-api-python-client
 duckduckgo_search
+openai>=1.0.0,<2.0.0
