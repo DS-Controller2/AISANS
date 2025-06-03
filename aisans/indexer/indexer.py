@@ -56,8 +56,8 @@ class Indexer:
             # Add an index on URL for faster lookups if needed, though FTS5 rowid might be sufficient for primary key ops
             # cursor.execute("CREATE INDEX IF NOT EXISTS idx_url ON pages(url);")
             cursor.execute(create_table_sql)
-            # Create an index on the 'url' column for faster lookups and deletions.
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url);")
+            # The following line was removed as it caused warnings:
+            # cursor.execute("CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url);")
             self.conn.commit()
             # print("FTS5 'pages' table created or already exists.")
         except sqlite3.Error as e:
