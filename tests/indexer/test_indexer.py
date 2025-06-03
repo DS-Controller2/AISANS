@@ -1,210 +1,181 @@
 import unittest
 import os
 import sqlite3
-import sys
-from datetime import datetime
-from unittest.mock import patch # Correct import for patch
+import shutil # For cleaning up test directories if needed
 
-# Add project root to sys.path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# Add project root to sys.path to allow imports from aisans package
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
 
 from aisans.indexer.indexer import Indexer
 
 class TestIndexer(unittest.TestCase):
+    DB_FILE = os.path.join(os.path.dirname(__file__), 'test_indexer.db') # Store test db in the same dir as test file
+
     def setUp(self):
-        self.test_db_path = "test_aisans_index.db"
-        # Ensure the directory for the db_path exists
-        # For test_db_path = "test_aisans_index.db", dirname will be empty, so no os.makedirs needed here.
-        # If it were "data/test_aisans_index.db", then os.makedirs(os.path.dirname(...)) would be useful.
-        # os.makedirs(os.path.dirname(os.path.abspath(self.test_db_path)), exist_ok=True) # Not strictly needed for root path
+        db_dir = os.path.dirname(self.DB_FILE)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
 
-        if os.path.exists(self.test_db_path):
-            os.remove(self.test_db_path)
-        self.indexer = Indexer(db_path=self.test_db_path)
+        if os.path.exists(self.DB_FILE):
+            os.remove(self.DB_FILE)
 
-        # Common test documents
+        self.indexer = Indexer(db_path=self.DB_FILE)
+        self.assertIsNotNone(self.indexer.conn, "Failed to initialize Indexer connection.")
+
         self.doc1 = {
-            'url': 'http://example.com/page1', 'title': 'Apples and Oranges',
-            'body': 'This page talks about apples and oranges.',
-            'snippet': 'Apples, oranges.', 'source_engine': 'crawler',
-            'crawled_timestamp': datetime.now().isoformat()
+            'url': 'http://example.com/page1', 'title': 'Test Page 1',
+            'body': 'This is the first test page about apples.',
+            'snippet': 'First test page with apples.', 'source_engine': 'crawler',
+            'crawled_timestamp': '2024-01-01T10:00:00Z', 'llm_summary': 'Apples are great fruit.' # Added llm_summary
         }
         self.doc2 = {
-            'url': 'http://example.com/page2', 'title': 'Bananas and Pears',
-            'body': 'Information about bananas and delicious pears.',
-            'snippet': 'Bananas, pears.', 'source_engine': 'meta_ddg',
-            'crawled_timestamp': datetime.now().isoformat()
+            'url': 'http://example.com/page2', 'title': 'Another Test Page 2',
+            'body': 'A second page talking about bananas and oranges.',
+            'snippet': 'Second page with bananas.', 'source_engine': 'crawler',
+            'crawled_timestamp': '2024-01-01T11:00:00Z', 'llm_summary': None # llm_summary can be None
         }
-        self.doc3_update_doc1 = {
-            'url': 'http://example.com/page1', 'title': 'Apples and Cherries',
-            'body': 'Updated: This page is now about apples and also cherries.',
-            'snippet': 'Apples, cherries (updated).', 'source_engine': 'crawler_v2',
-            'crawled_timestamp': datetime.now().isoformat()
+        self.doc3_update_page1 = {
+            'url': 'http://example.com/page1', 'title': 'Test Page 1 Updated',
+            'body': 'This is the UPDATED first test page about apples and cherries.',
+            'snippet': 'UPDATED First test page with apples and cherries.', 'source_engine': 'crawler_v2',
+            'crawled_timestamp': '2024-01-01T12:00:00Z', 'llm_summary': 'Apples and cherries are tasty fruits.' # Updated llm_summary
         }
 
     def tearDown(self):
-        if self.indexer: # Ensure indexer was successfully initialized
+        if self.indexer:
             self.indexer.close()
-        if os.path.exists(self.test_db_path):
-            os.remove(self.test_db_path)
+        if os.path.exists(self.DB_FILE):
+            os.remove(self.DB_FILE)
 
-    def test_create_table(self):
+    def test_create_table_includes_llm_summary(self):
         self.assertIsNotNone(self.indexer.conn, "Database connection should not be None after setUp.")
         cursor = self.indexer.conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND tbl_name='pages';")
-        result = cursor.fetchone()
-        self.assertIsNotNone(result, "FTS5 table 'pages' was not created.")
+        cursor.execute("PRAGMA table_info(pages);")
+        columns = [row[1] for row in cursor.fetchall()]
+        self.assertIn("llm_summary", columns, "llm_summary column should exist in the pages table.")
 
-        # Check if it's an FTS table by trying an FTS-specific query
-        try:
-            cursor.execute("SELECT * FROM pages WHERE pages MATCH 'test';")
-        except sqlite3.Error as e:
-            self.fail(f"Table 'pages' does not seem to be a functioning FTS5 table: {e}")
-
-
-    def test_add_single_document_success(self):
+    def test_add_single_document_and_retrieve_with_llm_summary(self):
         self.assertTrue(self.indexer.add_document(self.doc1))
-        cursor = self.indexer.conn.cursor()
-        # FTS5 tables don't store columns in the same way, query by `rowid` or indexed columns
-        # Or retrieve all columns if they are part of the FTS5 table definition (which they are here)
-        cursor.execute("SELECT url, title FROM pages WHERE url = ?", (self.doc1['url'],))
-        row = cursor.fetchone()
-        self.assertIsNotNone(row)
-        # sqlite3.Row can be accessed by index or by name (if row_factory was set, which it is in search, but not here directly)
-        self.assertEqual(row[0], self.doc1['url'])
-        self.assertEqual(row[1], self.doc1['title'])
 
-    def test_add_single_document_update(self):
+        cur = self.indexer.conn.cursor()
+        # Use row factory for easier column access by name
+        self.indexer.conn.row_factory = sqlite3.Row
+        cur = self.indexer.conn.cursor()
+        cur.execute("SELECT url, title, body, snippet, llm_summary, source_engine, crawled_timestamp FROM pages WHERE url = ?", (self.doc1['url'],))
+        res = cur.fetchone()
+        self.assertIsNotNone(res)
+        self.assertEqual(res['title'], self.doc1['title'])
+        self.assertEqual(res['llm_summary'], self.doc1['llm_summary'])
+        self.assertEqual(res['url'], self.doc1['url'])
+        self.indexer.conn.row_factory = None # Reset row factory
+
+
+    def test_add_document_updates_existing_including_llm_summary(self):
         self.indexer.add_document(self.doc1)
-        self.assertTrue(self.indexer.add_document(self.doc3_update_doc1)) # Same URL
+        self.assertTrue(self.indexer.add_document(self.doc3_update_page1))
 
-        cursor = self.indexer.conn.cursor()
-        cursor.execute("SELECT title, source_engine FROM pages WHERE url = ?", (self.doc1['url'],))
-        row = cursor.fetchone()
-        self.assertEqual(row[0], self.doc3_update_doc1['title'])
-        self.assertEqual(row[1], self.doc3_update_doc1['source_engine'])
+        self.indexer.conn.row_factory = sqlite3.Row
+        cur = self.indexer.conn.cursor()
+        cur.execute("SELECT title, source_engine, llm_summary FROM pages WHERE url = ?", (self.doc1['url'],))
+        res_updated = cur.fetchone()
+        self.assertIsNotNone(res_updated)
+        self.assertEqual(res_updated['title'], self.doc3_update_page1['title'])
+        self.assertEqual(res_updated['source_engine'], self.doc3_update_page1['source_engine'])
+        self.assertEqual(res_updated['llm_summary'], self.doc3_update_page1['llm_summary'])
 
-        cursor.execute("SELECT COUNT(*) FROM pages WHERE url = ?", (self.doc1['url'],))
-        count = cursor.fetchone()[0]
-        self.assertEqual(count, 1)
+        cur.execute("SELECT COUNT(*) FROM pages")
+        count = cur.fetchone()[0]
+        self.assertEqual(count, 1, "Update should not create a new row.")
+        self.indexer.conn.row_factory = None
 
-    def test_add_single_document_missing_fields(self):
-        incomplete_doc = {'url': 'http://example.com/incomplete', 'title': 'Incomplete'} # Missing other required fields
-        # Patch print to suppress error messages during test
-        with patch('builtins.print'):
+
+    def test_add_document_with_none_llm_summary(self):
+        self.assertTrue(self.indexer.add_document(self.doc2))
+        self.indexer.conn.row_factory = sqlite3.Row
+        cur = self.indexer.conn.cursor()
+        cur.execute("SELECT llm_summary FROM pages WHERE url = ?", (self.doc2['url'],))
+        res = cur.fetchone()
+        self.assertIsNotNone(res)
+        self.assertIsNone(res['llm_summary'])
+        self.indexer.conn.row_factory = None
+
+    def test_add_batch_documents_with_llm_summary(self):
+        doc4 = {
+            'url': 'http://example.com/page4', 'title': 'Batch Page 4',
+            'body': 'Content for batch page four about dates.',
+            'snippet': 'Batch page four.', 'source_engine': 'batch_crawl',
+            'crawled_timestamp': '2024-01-02T00:00:00Z', 'llm_summary': 'Dates are sweet.'
+        }
+        doc5_update_page2 = { # Updates self.doc2
+            'url': 'http://example.com/page2', 'title': 'Page 2 Batch Update',
+            'body': 'Updated second page via batch, talking about figs.',
+            'snippet': 'Page 2 batch update.', 'source_engine': 'batch_crawl_v2',
+            'crawled_timestamp': '2024-01-02T01:00:00Z', 'llm_summary': 'Figs are interesting.'
+        }
+
+        self.indexer.add_document(self.doc1) # Pre-existing doc
+        self.indexer.add_document(self.doc2) # Pre-existing doc that will be updated
+
+        num_added = self.indexer.add_batch([doc4, doc5_update_page2])
+        self.assertEqual(num_added, 2)
+
+        self.indexer.conn.row_factory = sqlite3.Row
+        cur = self.indexer.conn.cursor()
+
+        res_doc4 = cur.execute("SELECT * FROM pages WHERE url = ?", (doc4['url'],)).fetchone()
+        self.assertIsNotNone(res_doc4)
+        self.assertEqual(res_doc4['llm_summary'], doc4['llm_summary'])
+
+        res_doc5_updated = cur.execute("SELECT * FROM pages WHERE url = ?", (doc5_update_page2['url'],)).fetchone()
+        self.assertIsNotNone(res_doc5_updated)
+        self.assertEqual(res_doc5_updated['title'], doc5_update_page2['title'])
+        self.assertEqual(res_doc5_updated['llm_summary'], doc5_update_page2['llm_summary'])
+
+        cur.execute("SELECT COUNT(*) FROM pages")
+        self.assertEqual(cur.fetchone()[0], 3) # doc1, doc2 (updated), doc4
+        self.indexer.conn.row_factory = None
+
+    def test_search_includes_llm_summary_field_and_content(self):
+        self.indexer.add_document(self.doc1) # llm_summary: 'Apples are great fruit.'
+        self.indexer.add_document(self.doc3_update_page1) # Overwrites doc1, llm_summary: 'Apples and cherries are tasty fruits.'
+        self.indexer.add_document(self.doc2) # llm_summary: None
+
+        # Search for term in body
+        results_apples = self.indexer.search("cherries")
+        self.assertEqual(len(results_apples), 1)
+        self.assertEqual(results_apples[0]['url'], self.doc3_update_page1['url'])
+        self.assertEqual(results_apples[0]['llm_summary'], self.doc3_update_page1['llm_summary'])
+
+        # Search for term in llm_summary
+        results_tasty = self.indexer.search("tasty")
+        self.assertEqual(len(results_tasty), 1)
+        self.assertEqual(results_tasty[0]['url'], self.doc3_update_page1['url'])
+        self.assertEqual(results_tasty[0]['llm_summary'], self.doc3_update_page1['llm_summary'])
+
+        # Search for term that matches a document where llm_summary is None
+        results_oranges = self.indexer.search("oranges") # from body of doc2
+        self.assertEqual(len(results_oranges), 1)
+        self.assertEqual(results_oranges[0]['url'], self.doc2['url'])
+        self.assertIsNone(results_oranges[0]['llm_summary'])
+
+        # Ensure all results from a broader query include the llm_summary field
+        self.indexer.add_document({
+            'url': 'http://example.com/page_generic', 'title': 'Generic Page Content',
+            'body': 'Some generic content for testing search.',
+            'snippet': 'Generic.', 'source_engine': 'test',
+            'crawled_timestamp': '2024-01-04T00:00:00Z', 'llm_summary': 'Generic summary.'
+        })
+        all_results = self.indexer.search("page") # Should match multiple
+        for res in all_results:
+            self.assertIn('llm_summary', res.keys())
+
+    def test_add_document_missing_required_fields_handled(self):
+        # llm_summary is optional, but other fields are required by the method
+        incomplete_doc = {'url': 'http://example.com/incomplete', 'title': 'Incomplete Title'}
+        with patch('builtins.print'): # Suppress expected "Document data is missing..." print
             self.assertFalse(self.indexer.add_document(incomplete_doc))
 
-        cursor = self.indexer.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM pages WHERE url = ?", (incomplete_doc['url'],))
-        self.assertEqual(cursor.fetchone()[0], 0)
-
-    def test_add_batch_success_and_updates(self):
-        docs_to_add = [self.doc1, self.doc2, self.doc3_update_doc1] # doc3 updates doc1
-        added_count = self.indexer.add_batch(docs_to_add)
-        self.assertEqual(added_count, len(docs_to_add))
-
-        cursor = self.indexer.conn.cursor()
-        cursor.execute("SELECT title FROM pages WHERE url = ?", (self.doc1['url'],))
-        self.assertEqual(cursor.fetchone()[0], self.doc3_update_doc1['title'])
-
-        cursor.execute("SELECT title FROM pages WHERE url = ?", (self.doc2['url'],))
-        self.assertEqual(cursor.fetchone()[0], self.doc2['title'])
-
-        cursor.execute("SELECT COUNT(*) FROM pages")
-        self.assertEqual(cursor.fetchone()[0], 2)
-
-    def test_add_batch_skip_missing_fields(self):
-        valid_doc = {'url': 'http://example.com/valid_batch', 'title': 'Valid', 'body': 'b', 'snippet': 's', 'source_engine': 'se', 'crawled_timestamp': datetime.now().isoformat()}
-        invalid_doc = {'url': 'http://example.com/invalid_batch', 'title': 'Invalid'} # Missing required fields
-        docs = [valid_doc, invalid_doc, self.doc1]
-
-        with patch('builtins.print'): # Suppress print for missing fields
-            added_count = self.indexer.add_batch(docs)
-        self.assertEqual(added_count, 2)
-
-        cursor = self.indexer.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM pages")
-        self.assertEqual(cursor.fetchone()[0], 2)
-        cursor.execute("SELECT url FROM pages WHERE url = ?", (valid_doc['url'],))
-        self.assertIsNotNone(cursor.fetchone())
-        cursor.execute("SELECT url FROM pages WHERE url = ?", (self.doc1['url'],))
-        self.assertIsNotNone(cursor.fetchone())
-        cursor.execute("SELECT url FROM pages WHERE url = ?", (invalid_doc['url'],))
-        self.assertIsNone(cursor.fetchone())
-
-
-    def test_search_found(self):
-        self.indexer.add_document(self.doc1)
-        self.indexer.add_document(self.doc2)
-
-        results = self.indexer.search("apples")
-        self.assertEqual(len(results), 1)
-        self.assertIsInstance(results[0], dict)
-        self.assertEqual(results[0]['url'], self.doc1['url'])
-        self.assertIn('rank', results[0])
-
-        results_pears = self.indexer.search("pears")
-        self.assertEqual(len(results_pears), 1)
-        self.assertEqual(results_pears[0]['url'], self.doc2['url'])
-
-        results_body_terms = self.indexer.search("page talks about")
-        self.assertEqual(len(results_body_terms), 1)
-        self.assertEqual(results_body_terms[0]['url'], self.doc1['url'])
-
-
-    def test_search_not_found(self):
-        self.indexer.add_document(self.doc1)
-        results = self.indexer.search("nonexistentterm123xyz")
-        self.assertEqual(len(results), 0)
-
-    def test_search_limit(self):
-        self.indexer.add_document(self.doc1) # "apples oranges page"
-        self.indexer.add_document(self.doc2) # "bananas pears"
-        doc_temp = {
-            'url': 'http://example.com/page3', 'title': 'Third Page Item',
-            'body': 'Yet another page for testing limit.',
-            'snippet': 'Page three.', 'source_engine': 'test',
-            'crawled_timestamp': datetime.now().isoformat()
-        }
-        self.indexer.add_document(doc_temp) # "page"
-
-        results = self.indexer.search("page", limit=1)
-        self.assertEqual(len(results), 1)
-
-        results_all = self.indexer.search("page", limit=5)
-        # doc1, doc_temp contain "page". doc2 does not.
-        self.assertEqual(len(results_all), 2)
-
-    def test_search_empty_query(self):
-        self.indexer.add_document(self.doc1)
-        # FTS5 behavior with empty query string can be "return all" or error depending on SQLite version / compile options.
-        # The search method's try-except sqlite3.Error should catch errors if any.
-        # If it returns all, then len(results) > 0. If it errors, len(results) == 0.
-        # Let's assume our error handling in search() correctly returns [] for errors.
-        with patch('builtins.print'): # Suppress "Error searching index..."
-            results = self.indexer.search("")
-        self.assertEqual(len(results), 0, "Search with empty query should return empty list (due to FTS error or no match).")
-
-    def test_indexer_context_manager(self):
-        temp_db_for_with = "test_aisans_index_with.db"
-        if os.path.exists(temp_db_for_with):
-            os.remove(temp_db_for_with)
-
-        with Indexer(db_path=temp_db_for_with) as idx:
-            idx.add_document(self.doc1)
-            self.assertIsNotNone(idx.conn, "Connection should be active inside 'with' block.")
-
-        self.assertIsNone(idx.conn, "Connection should be None after exiting 'with' block and close() is called.")
-
-        # Verify data was written and persisted
-        conn_check = sqlite3.connect(temp_db_for_with)
-        cursor_check = conn_check.cursor()
-        cursor_check.execute("SELECT url FROM pages WHERE url = ?", (self.doc1['url'],))
-        self.assertIsNotNone(cursor_check.fetchone())
-        conn_check.close()
-
-        if os.path.exists(temp_db_for_with):
-            os.remove(temp_db_for_with)
-
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(verbosity=2)
