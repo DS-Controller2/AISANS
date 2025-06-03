@@ -18,12 +18,26 @@ Key functions:
 *   `fetch_url_content` (in `aisans/crawler/crawler.py`): This function takes a URL as input and fetches the HTML content of the page.
 *   `parse_html_content` (in `aisans/crawler/parser.py`): This function takes HTML content as input, extracts the main textual content, and identifies new links to be crawled.
 
+## Meta-Search Module
+
+The AISANS project now includes a meta-search module designed to aggregate results from multiple search engines for a given query. This allows for a broader range of search results.
+
+**Key Features:**
+-   **Multi-Engine Support:** Currently integrates with DuckDuckGo (via the `duckduckgo_search` library) and includes a placeholder for Google Custom Search.
+-   **LLM Query Enhancement (Placeholder):** Incorporates a basic placeholder for future LLM-based query enhancement. Currently, it appends a test string to the query.
+-   **Deduplication:** Removes duplicate results based on URL.
+
+**Structure:**
+-   `aisans/metasearch/core.py`: Contains the main orchestration logic (`search_all_engines`) and the LLM enhancement placeholder (`enhance_query_llm`).
+-   `aisans/metasearch/engines.py`: Contains functions for interacting with specific search engines (`search_duckduckgo`, placeholder `search_google`).
+
 ## Project Structure
 
 The project is organized into the following main directories:
 
 *   `aisans/`: Contains the core source code for the search engine.
     *   `crawler/`:  Handles fetching and parsing web content.
+    *   `metasearch/`: Aggregates results from multiple search engines and includes LLM query enhancement capabilities.
     *   `indexer/`: Responsible for indexing the crawled content (placeholder).
     *   `llm/`:  Integrates with large language models (placeholder).
     *   `search/`:  Provides search functionalities (placeholder).
@@ -56,7 +70,16 @@ The project is organized into the following main directories:
     python scripts/run_crawler.py
     ```
 
-## How to Run the Crawler
+### Configuration for Google Search
+
+To enable Google Search results within the meta-search module:
+1.  You will need a Google API Key and a Custom Search Engine (CSE) ID.
+2.  Currently, these need to be manually inserted into `aisans/metasearch/core.py` where `YOUR_GOOGLE_API_KEY_HERE` and `YOUR_CSE_ID_HERE` are indicated.
+    *Future versions may support environment variables for this configuration.*
+
+## Running Project Scripts
+
+### How to Run the Crawler
 
 The `scripts/run_crawler.py` script is the entry point for running the web crawler.
 
@@ -70,6 +93,15 @@ python scripts/run_crawler.py
 ```
 
 This script will initialize the crawler, fetch content starting from the seed URLs, parse the HTML, and extract new links to continue crawling (behavior might be further configurable).
+
+### Running the Meta-Search
+
+To test the meta-search functionality, which queries DuckDuckGo (and a placeholder for Google) and applies a placeholder LLM query enhancement:
+
+```bash
+python scripts/run_metasearch.py
+```
+The script will prompt you to enter a search query.
 
 ## Future Enhancements
 
