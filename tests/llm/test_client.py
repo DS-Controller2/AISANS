@@ -70,7 +70,7 @@ class TestLLMClient(unittest.TestCase):
     def test_default_model_hardcoded(self, mock_openai_class):
         # OPENROUTER_DEFAULT_MODEL is cleared by setUp
         client = LLMClient(api_key="test_key")
-        self.assertEqual(client.default_model_name, "gryphe/mythomist-7b:free")
+        self.assertEqual(client.default_model_name, "mistralai/mistral-7b-instruct:free") # Updated expected model
 
     @patch('aisans.llm.client.OpenAI')
     def test_default_model_from_env_var(self, mock_openai_class):
@@ -111,10 +111,10 @@ class TestLLMClient(unittest.TestCase):
 
         self.assertEqual(response, "Default model response")
         mock_instance.chat.completions.create.assert_called_once_with(
-            model=client.default_model_name, # Should be "gryphe/mythomist-7b:free"
+            model=client.default_model_name,
             messages=[{"role": "user", "content": "Hi"}]
         )
-        self.assertEqual(client.default_model_name, "gryphe/mythomist-7b:free")
+        self.assertEqual(client.default_model_name, "mistralai/mistral-7b-instruct:free") # Updated expected model
 
 
     @patch('aisans.llm.client.OpenAI')
@@ -174,10 +174,10 @@ class TestLLMClient(unittest.TestCase):
 
             self.assertEqual(response, "Default model text response")
             mock_gcc.assert_called_once_with(
-                model=client.default_model_name, # Should be "gryphe/mythomist-7b:free"
+                model=client.default_model_name,
                 messages=[{"role": "user", "content": "Hi"}]
             )
-            self.assertEqual(client.default_model_name, "gryphe/mythomist-7b:free")
+            self.assertEqual(client.default_model_name, "mistralai/mistral-7b-instruct:free") # Updated expected model
 
 if __name__ == '__main__':
     unittest.main()
