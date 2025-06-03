@@ -5,14 +5,100 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from aisans.metasearch.core import enhance_query_llm, search_all_engines
+# LLMClient is imported by aisans.metasearch.core, so we patch it there.
 
 class TestEnhanceQueryLLM(unittest.TestCase):
-    def test_enhance_query_llm_placeholder(self):
-        query = "free stuff"
-        # As enhance_query_llm also prints, we might want to patch print if its output is not desired during tests
-        with patch('builtins.print'): # Suppress print during this test
-            enhanced = enhance_query_llm(query)
-        self.assertEqual(enhanced, "free stuff (enhanced for LLM testing)")
+
+    @patch('aisans.metasearch.core.LLMClient')
+    # Ensure OPENROUTER_API_KEY is set for the duration of this test method for LLMClient to init
+    @patch.dict(os.environ, {'OPENROUTER_API_KEY': 'fake_key_for_test'})
+    def test_enhance_query_llm_success(self, MockLLMClient):
+        mock_llm_instance = MockLLMClient.return_value
+        mock_llm_instance.generate_text.return_value = "enhanced query"
+        original_query = "original query"
+
+        with patch('builtins.print'): # Suppress print statements from enhance_query_llm
+            enhanced_query = enhance_query_llm(original_query)
+
+        self.assertEqual(enhanced_query, "enhanced query")
+        mock_llm_instance.generate_text.assert_called_once()
+        # Optionally check call arguments:
+        call_args = mock_llm_instance.generate_text.call_args
+        self.assertIn(original_query, call_args.kwargs['prompt'])
+        self.assertEqual(call_args.kwargs['model_name'], mock_llm_instance.default_model_name)
+        self.assertEqual(call_args.kwargs['max_tokens'], 100)
+        self.assertEqual(call_args.kwargs['temperature'], 0.3)
+
+    @patch('aisans.metasearch.core.LLMClient')
+    @patch.dict(os.environ, {'OPENROUTER_API_KEY': 'fake_key_for_test'})
+    def test_enhance_query_llm_returns_none_or_empty(self, MockLLMClient):
+        mock_llm_instance = MockLLMClient.return_value
+        original_query = "original query"
+
+        # Test case 1: LLM returns None
+        mock_llm_instance.generate_text.return_value = None
+        with patch('builtins.print'):
+            enhanced_query_none = enhance_query_llm(original_query)
+        self.assertEqual(enhanced_query_none, original_query)
+
+        # Test case 2: LLM returns empty string (whitespace only)
+        mock_llm_instance.generate_text.reset_mock() # Reset call count for next scenario
+        mock_llm_instance.generate_text.return_value = "   " # Whitespace only
+        with patch('builtins.print'):
+            enhanced_query_empty = enhance_query_llm(original_query)
+        self.assertEqual(enhanced_query_empty, original_query)
+
+    @patch('aisans.metasearch.core.LLMClient')
+    @patch.dict(os.environ, {'OPENROUTER_API_KEY': 'fake_key_for_test'})
+    def test_enhance_query_llm_returns_same_query(self, MockLLMClient):
+        mock_llm_instance = MockLLMClient.return_value
+        original_query = "original query"
+        mock_llm_instance.generate_text.return_value = "original query" # Same as input
+
+        with patch('builtins.print'):
+            enhanced_query = enhance_query_llm(original_query)
+
+        self.assertEqual(enhanced_query, original_query)
+
+    @patch('aisans.metasearch.core.LLMClient')
+    @patch.dict(os.environ, {}, clear=True) # Ensure OPENROUTER_API_KEY is NOT set
+    def test_enhance_query_llm_no_api_key_env_check(self, MockLLMClient):
+        original_query = "original query"
+
+        # The first check `if not os.getenv('OPENROUTER_API_KEY'):` in `enhance_query_llm` should trigger.
+        # So, MockLLMClient should not be called.
+        with patch('builtins.print'):
+            enhanced_query = enhance_query_llm(original_query)
+
+        self.assertEqual(enhanced_query, original_query)
+        MockLLMClient.assert_not_called()
+
+    @patch('aisans.metasearch.core.LLMClient')
+    @patch.dict(os.environ, {'OPENROUTER_API_KEY': 'fake_key_for_init_failure'}) # Key is present for os.getenv
+    def test_enhance_query_llm_client_init_raises_value_error(self, MockLLMClient):
+        # LLMClient instantiation (the mocked one) should raise ValueError.
+        MockLLMClient.side_effect = ValueError("Invalid API key from LLMClient")
+        original_query = "original query"
+
+        with patch('builtins.print'):
+            enhanced_query = enhance_query_llm(original_query)
+
+        self.assertEqual(enhanced_query, original_query)
+        MockLLMClient.assert_called_once() # LLMClient was attempted to be instantiated
+
+    @patch('aisans.metasearch.core.LLMClient')
+    @patch.dict(os.environ, {'OPENROUTER_API_KEY': 'fake_key_for_test'})
+    def test_enhance_query_llm_generate_text_exception(self, MockLLMClient):
+        mock_llm_instance = MockLLMClient.return_value
+        mock_llm_instance.generate_text.side_effect = Exception("Unexpected API error")
+        original_query = "original query"
+
+        with patch('builtins.print'):
+            enhanced_query = enhance_query_llm(original_query)
+
+        self.assertEqual(enhanced_query, original_query)
+        mock_llm_instance.generate_text.assert_called_once()
+
 
 class TestSearchAllEngines(unittest.TestCase):
     @patch('aisans.metasearch.core.search_duckduckgo')
