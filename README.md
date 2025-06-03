@@ -39,7 +39,7 @@ The project is organized into the following main directories:
     git clone <repository_url> 
     cd aisans
     ```
-    *(Replace `<repository_url>` with the actual URL of the repository)*
+    *(Replace `https://github.com/DS-Controller2/AISANS.git` with the actual URL of the repository)*
 
 2.  **Install Dependencies:**
     The project uses Python and its dependencies are listed in `requirements.txt`.
